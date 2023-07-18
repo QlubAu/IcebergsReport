@@ -17,7 +17,7 @@ The script requires the following libraries to be installed:
 You can run this script by navigating to the script's directory and executing the command:
 
 ```bash
-streamlit run revenue_report.py
+streamlit run main.py
 ```
 
 ## Features
