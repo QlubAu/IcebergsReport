@@ -1,234 +1,162 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
-import time
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from pathlib import Path
-import csv
-import re
-from datetime import datetime, timedelta
-import os
+import requests
 import pandas as pd
-import plotly.express as px
+import datetime as dt_
+from io import StringIO
+from datetime import datetime, timedelta
 import streamlit as st
+import re
 
 
-def process_file(file_name):
+def initialize_streamlit():
+    """Initialize Streamlit interface by setting the title and instructions."""
+    st.title("Icebergs Revenue Report")
+    st.write("Select a date to see the revenue generated")
+
+
+def get_start_date():
+    """Prompt user to select a date using Streamlit and return selected date with specific time combined."""
+    # Select a date range
+    start_date = st.date_input("Select a date", dt_.date(2023, 7, 18))
+    selected_time = datetime.strptime("03:00:00", "%H:%M:%S").time()
+
+    return datetime.combine(start_date, selected_time)
+
+
+def get_end_date(dt_start):
+    """Get end date which is one day ahead of the start date."""
+    return dt_start + timedelta(days=1)
+
+
+def convert_date_format(date_time, flag):
+    """Convert date_time object to a specific string format."""
+    return (
+        date_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        if flag == "start"
+        else date_time.strftime("%Y-%m-%dT%H:%M:%S" ".999Z")
+    )
+
+
+def get_csv_from_api(start_date_time, end_date_time):
+    """Make API request to fetch CSV data and return it as pandas DataFrame."""
+    api_endpoint = f"https://api-vendor.qlub.cloud/v1/vendor/order/download/3403?fileFormat=csv&startDate={start_date_time}&endDate={end_date_time}"
+    header = {
+        "Accept": "application/json, text/plain, */*",
+        "Authorization": "Bearer eyJraWQiOiJoK3FlUnBNMWNrcFdXYW10UkJ0Q0ROMGt1bERQaFlUaEVSd3Q5Wmd4YXBRPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiIzMjI2MWY0Zi1hZGU0LTQzZjItOTZhNy01ZTVkMGU0ZmM0YzQiLCJjb2duaXRvOmdyb3VwcyI6WyJRbHViQWRtaW4iXSwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlzcyI6Imh0dHBzOlwvXC9jb2duaXRvLWlkcC5hcC1zb3V0aGVhc3QtMS5hbWF6b25hd3MuY29tXC9hcC1zb3V0aGVhc3QtMV9NY3BGem16cDMiLCJjb2duaXRvOnVzZXJuYW1lIjoiMzIyNjFmNGYtYWRlNC00M2YyLTk2YTctNWU1ZDBlNGZjNGM0Iiwib3JpZ2luX2p0aSI6IjE1MjM3N2YxLTBlNDUtNDQ1MS1hNWE5LTgwZjM2Y2FlZGFhNiIsImF1ZCI6IjRpNGhpNGFmYThnOXVkcmRkZXByMGxqYzR1IiwiZXZlbnRfaWQiOiI5NzNkOTA2Yi1kNTRlLTRlZjktYmMwMi1iYTJhYjM1MTZlZWYiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTY4ODYyMTgxOSwiZXhwIjoxNjg5NzM4MzI1LCJpYXQiOjE2ODk2NTE5MjUsImp0aSI6ImNmNThkN2M3LTdiM2YtNDRjNC05YTRkLTdmOTRjMjY4ZTM5NSIsImVtYWlsIjoicHJlcml0aC5zdWJyYW1hbnlhQHFsdWIuaW8ifQ.lCsNK8g5fUZ77WJeFasiI6VB1FnYjEw78aoj6xVo-LVi8TrsZH7IP2xrrLEYAcnGxHAtlXCl1xJmllAo9EoHnMPw3XYVK40qsuHiXXoGpOdukNeI0imenhmLL_FRE9GtSBxQsABhXa6-3JQcBZfIYB4KVdV5IDrE14eyeYCtg2QccLaM_iVDexhSgppR6dts_zEwhedlKGsklDjsQTFGcbizhsFJdhGjp1M0qeEh9TUYgUTU255pT_GKGQc9LmgSGNlKOy8nZVFXVRo6J-TsXyw8wnl6MwgOdL6b6AoneawuHUV8OzaDg3T-nvwEuNZDAb1HXK4qoAQIDAe-MSuqKQ",
+    }
+
+    response = requests.get(api_endpoint, headers=header)
+    data = StringIO(response.text)
+    return pd.read_csv(data, sep=",") if response.status_code == 200 else None
+
+
+def process_csv_data(csv_df, start_date_time, end_date_time):
+    """Process the CSV data and return the revenues, tips and surcharges."""
     qdf_total = 0
-    bar_total_bill = 0
+    bill_3 = 0
     tips_total = 0
-    tips_bar = 0
+    bill_5 = 0
     total_bill = 0
-    qdf_bar = 0
-    table_list = ['101', '203']
+    bill_4 = 0
+    table_list = [
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450,
+        500,
+        550,
+        600,
+        650,
+        700,
+        750,
+        800,
+        900,
+        1000,
+        1050,
+        2000,
+        2050,
+        4000,
+        4050,
+        5000,
+        5050,
+        6000,
+        6050,
+        7000,
+        7050,
+        "B1",
+        "B2",
+        "B3",
+    ]
 
-    #now = datetime.now()
-    now = datetime(year=2023, month=7, day=14,hour=23,minute=23,second=12)
-
-    if now.hour < 3:
-        now = now - timedelta(days=1)
-
-    start_date = now.replace(hour=3, minute=0, second=0, microsecond=0)
-    end_date = start_date + timedelta(days=1)
-
-    with open(file_name, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                row_date = datetime.strptime(row['DateTime'], '%m/%d/%Y %H:%M %p')
-            except ValueError:
-                continue
-
-            if start_date <= row_date < end_date:
-                qdf_total += float(row['QlubDinerFee'])
-                total_bill += float(row['PaidAmount'])
-                tips_total += float(row['TipAmount'])
-
-                table_number = re.findall(r'\d+|B\d+', row['TableID'])
-                if table_number and table_number[0] in table_list:
-                    bar_total_bill += float(row['PaidAmount'])
-                    qdf_bar += float(row['QlubDinerFee'])
-                    tips_bar += float(row['TipAmount'])
-
-    dining_total = total_bill - bar_total_bill
-    dining_tips = tips_total - tips_bar
-    dining_qdf = qdf_total - qdf_bar
-    start_date_str = start_date.strftime('%d/%m/%Y')
-
-    output_file = '15_iceberg_check.csv'
-    file_exists = os.path.isfile(output_file)
-    if file_exists:
-        df = pd.read_csv(output_file)
-        if start_date_str in df['DATE'].values:
-            df.loc[df['DATE'] == start_date_str, 'Total BillAmount for Iceberg Dining'] = dining_total
-            df.loc[df['DATE'] == start_date_str, 'Total Tips for Iceberg Dining'] = dining_tips
-            df.loc[df['DATE'] == start_date_str, 'Total QlubDinerFee for Iceberg Dining'] = dining_qdf
-            df.loc[df['DATE'] == start_date_str, 'Total BillAmount for Iceberg Bar'] = bar_total_bill
-            df.loc[df['DATE'] == start_date_str, 'Total Tips for Iceberg Bar'] = tips_bar
-            df.loc[df['DATE'] == start_date_str, 'Total QlubDinerFee for Iceberg Bar'] = qdf_bar
-        else:
-            new_row = {'DATE': start_date_str,
-                       'Total BillAmount for Iceberg Dining': dining_total,
-                       'Total Tips for Iceberg Dining': dining_tips,
-                       'Total QlubDinerFee for Iceberg Dining': dining_qdf,
-                       'Total BillAmount for Iceberg Bar': bar_total_bill, 'Total Tips for Iceberg Bar': tips_bar,
-                       'Total QlubDinerFee for Iceberg Bar': qdf_bar}
-            df = df._append(new_row, ignore_index=True)
-        df.to_csv(output_file, index=False)
-    else:
-        with open(output_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["DATE", "Total BillAmount for Iceberg Dining", "Total Tips for Iceberg Dining",
-                             "Total QlubDinerFee for Iceberg Dining", "Total BillAmount for Iceberg Bar",
-                             "Total Tips for Iceberg Bar", "Total QlubDinerFee for Iceberg Bar"])
-            writer.writerow([start_date_str, dining_total, dining_tips, dining_qdf, bar_total_bill, tips_bar, qdf_bar])
-    return output_file
-def web_scraper():
-    # Define the path for ChromeDriver
-    chrome_options = Options()
-
-    # Set up ChromeDriver
-    webdriver_service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=webdriver_service, options=chrome_options)
-    wait = WebDriverWait(driver, 10)
-    # Navigate to the login page
-    driver.get("https://vendor.qlub.cloud/orders/")
-    time.sleep(2)
-
-    # Enter login credentials
-    wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div/div/div[2]/div[2]/div/div[2]/div/div[2]/div/div/form/div/div[1]/div/div/input"))).send_keys("stefano@idrb.com")
-    wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div/div/div[2]/div[2]/div/div[2]/div/div[2]/div/div/form/div/div[2]/div/div/input"))).send_keys("Qlub!2023")
-
-
-    # Click on the checkbox and login
-    #driver.find_element(By.CSS_SELECTOR, "input[type='checkbox']").click()
-    driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-
-    time.sleep(5)
-
-    # Navigate to dropdown menu and select an option
-    dropdown_menu = driver.find_element(By.ID, "select-restaurant-autocomplete")
-    dropdown_menu.click()
-
-    time.sleep(5)
-
-    # Select the option
-    #option = driver.find_element(By.XPATH, "//li[text()='Iceberg Dining']")
-    #option.click()
-    # Select the option
-    dropdown_menu = wait.until(EC.presence_of_element_located((By.ID, "select-restaurant-autocomplete")))
-    dropdown_menu.click()
-    input_box = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div/div/div[2]/div[2]/div/div[2]/div/div[2]/div/div/form/div/div[1]/div/div/div/input")))
-    input_box.send_keys("Iceberg Dining")
-    time.sleep(2)
-
-    input_box.send_keys(Keys.ARROW_DOWN)  # Send the 'down arrow' key press
-
-    # After the down arrow key press, you may want to press 'Enter' to select the option
-    input_box.send_keys(Keys.ENTER)
-
-    # At this point, if there's an autocomplete option for "Iceberg Dining", it should appear. You can then select it by clicking on it.
-    #option = wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div/div/div[2]/div[2]/div/div[2]/div/div[2]/div/div/form/div/div[1]/div/div/div/div/button[2]")))
-    #option = driver.find_element(By.XPATH,"/html/body/div/div/div[2]/div[2]/div/div[2]/div/div[2]/div/div/form/div/div[1]/div/div/div/div/button[2]")
-    #option.click()
-    print("bob")
-    time.sleep(3)
-
-
-    # Click on the select button
-    #select_button = driver.find_element(By.ID, "select-res-btn")
-    #select_button.click()
-    select_button = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "select-res-btn")))
-    select_button.click()
-
-    time.sleep(12)
-
-    # Navigate to the specific webpage
-    driver.get("https://vendor.qlub.cloud/orders/")
-
-    time.sleep(5)
-
-    # Click on the Export button
-    driver.find_element(By.XPATH, "/html/body/div/div/div[2]/div[2]/div[1]/div/div/button").click()
-
-    time.sleep(5)
-
-    # Click on the radio button 'All' in the popup
-    driver.find_element(By.XPATH, "//span[normalize-space()='All']").click()
-
-    # Click on the Export button in the popup
-    driver.find_element(By.ID, "action-btn").click()
-
-    time.sleep(5)
-
-    # Define Downloads folder
-    downloads_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-
-    # Check if the Downloads directory exists
-    if not os.path.isdir(downloads_dir):
-        print("Downloads directory does not exist.")
-    else:
+    for index, row in csv_df.iterrows():
         try:
-            # Get list of files sorted by modified time
-            files = Path(downloads_dir).glob('*.*')
-            files_by_date = sorted(files, key=os.path.getmtime, reverse=True)
+            row_date = datetime.strptime(str(row["DateTime"]), "%m/%d/%Y %H:%M %p")
+        except ValueError:
+            continue
+        start_date = datetime.strptime(start_date_time, "%Y-%m-%dT%H:%M:%S.000Z")
+        end_date = datetime.strptime(end_date_time, "%Y-%m-%dT%H:%M:%S.999Z")
 
-            # Check if the Downloads directory is empty
-            if not files_by_date:
-                print("Downloads directory is empty.")
-            else:
-                # Get latest downloaded file path
-                latest_download = files_by_date[0]
-                print(f"The most recently downloaded file is: {latest_download}")
+        if start_date <= row_date < end_date:
+            qdf_total += float(row["QlubDinerFee"])
+            total_bill += float(row["PaidAmount"])
+            tips_total += float(row["TipAmount"])
+            table_number = re.findall(r"\d+|B\d+", str(row["TableID"]))
+            if table_number and table_number[0] in table_list:
+                bill_3 += float(row["PaidAmount"])  # bar_bill
+                bill_4 += float(row["QlubDinerFee"])  # bar_qdf
+                bill_5 += float(row["TipAmount"])  # bar_tips
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-
-    # Close the browser
-    driver.quit()
-    return latest_download
-
-
-def load_data(file_name):
-    return pd.read_csv(file_name, parse_dates=['DATE'],dayfirst=True)
+    return qdf_total, total_bill, tips_total, bill_3, bill_4, bill_5
 
 
-def streamlit_p(csv_file):
-    # Set title
-    st.title("Iceberg Check Data Analysis")
+def display_results(total_bill, tips_total, qdf_total, bill_3, bill_4, bill_5):
+    """Display the results in a table."""
+    st.subheader("Revenue Summary")
+    st.write("The revenue for the selected date is as follows:")
+    bill_0 = "${0:.2f}".format(total_bill - bill_3)  # dining_bill
+    bill_1 = "${0:.2f}".format(tips_total - bill_5)  # dining_tips
+    bill_2 = "${0:.2f}".format(qdf_total - bill_4)  # dining_qdf
+    bill_3 = "${0:.2f}".format(bill_3)  # bar_bill
+    bill_4 = "${0:.2f}".format(bill_4)  # bar_qdf
+    bill_5 = "${0:.2f}".format(bill_5)  # bar_tip
 
-    # Load data
-    data = load_data(csv_file)
-
-    # Set pandas option to display large numbers
-    pd.options.display.float_format = '{:,.2f}'.format
-
-    # Display raw data
-    if st.button('Display Raw Data'):
-        st.subheader('Raw Data')
-        st.dataframe(data)
-
-    st.subheader('Visual Analysis')
-
-    # Plot for restaurant revenue
-    st.subheader('Restaurant Revenue Analysis')
-    fig1 = px.line(data, x='DATE', y='Total BillAmount for Iceberg Dining',
-                   title='Time Series Plot of Total BillAmount for Iceberg Dining')
-    st.plotly_chart(fig1)
-
-    # Plot for bar revenue
-    st.subheader('Bar Revenue Analysis')
-    fig2 = px.line(data, x='DATE', y='Total BillAmount for Iceberg Bar',
-                   title='Time Series Plot of Total BillAmount for Iceberg Bar')
-    st.plotly_chart(fig2)
+    figure_list = [bill_0, bill_1, bill_2, bill_3, bill_4, bill_5]
+    st.table(
+        pd.DataFrame(
+            [figure_list],
+            columns=[
+                "Dining Revenue",
+                "Dining Tips",
+                "Dining Surcharge",
+                "Bar Revenue",
+                "Bar Tips",
+                "Bar Surcharge",
+            ],
+        )
+    )
 
 
-# Call the function
-csv_name = web_scraper()
-output = process_file(csv_name)
-streamlit_p(output)
+def main():
+    """Main function to run the revenue report generator."""
+    initialize_streamlit()
+    dt_start = get_start_date()
+    dt_end = get_end_date(dt_start)
 
+    start_date_time = convert_date_format(dt_start, "start")
+    end_date_time = convert_date_format(dt_end, "end")
+
+    csv_df = get_csv_from_api(start_date_time, end_date_time)
+    if csv_df is not None:
+        qdf_total, total_bill, tips_total, bill_3, bill_4, bill_5 = process_csv_data(
+            csv_df, start_date_time, end_date_time
+        )
+        display_results(total_bill, tips_total, qdf_total, bill_3, bill_4, bill_5)
+    else:
+        st.write("Unable to fetch data. Please check the date and try again.")
+
+
+if __name__ == "__main__":
+    main()
