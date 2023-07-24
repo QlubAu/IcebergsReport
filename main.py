@@ -156,14 +156,16 @@ def main():
 
     start_date_time = convert_date_format(dt_start, "start")
     end_date_time = convert_date_format(dt_end, "end")
-    csv_df = get_csv_from_api(start_date_time, end_date_time)
-    if csv_df is not None:
-        with st.spinner('Wait for it...'):
-            qdf_total, total_bill, tips_total,refund_total, bill_3, bill_4, bill_5,refund_bar = process_csv_data(
-                csv_df, start_date_time, end_date_time)
-            display_results(total_bill, tips_total, qdf_total,refund_total, bill_3, bill_4, bill_5,refund_bar)
-    else:
-        st.write("Unable to fetch data. Please check the date and try again.")
+    with st.spinner('Loading..'):
+        csv_df = get_csv_from_api(start_date_time, end_date_time)
+        if csv_df is not None:
+                qdf_total, total_bill, tips_total,refund_total, bill_3, bill_4, bill_5,refund_bar = process_csv_data(
+                    csv_df, start_date_time, end_date_time)
+                st.stop()
+                display_results(total_bill, tips_total, qdf_total,refund_total, bill_3, bill_4, bill_5,refund_bar)
+        else:
+            st.stop()
+            st.write("Unable to fetch data. Please check the date and try again.")
 
 
 if __name__ == "__main__":
