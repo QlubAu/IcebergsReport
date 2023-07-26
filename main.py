@@ -129,7 +129,7 @@ def display_results(total_bill, tips_total, qdf_total,refund_total, bill_3, bill
     bill_5 = "${0:.2f}".format(bill_5)  # bar_tip
     bill_6 = "${0:.2f}".format(refund_total-refund_bar) # dining refund
     bill_7 = "${0:.2f}".format(refund_bar)
-    figure_list = [bill_0, bill_1, bill_2,bill_6, bill_3, bill_4, bill_5, bill_7]
+    figure_list = [bill_0, bill_1, bill_2,bill_6, bill_3, bill_5, bill_4, bill_7]
     st.table(
         pd.DataFrame(
             [figure_list],
