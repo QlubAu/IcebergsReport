@@ -1,4 +1,3 @@
-import os
 import requests
 import pandas as pd
 import datetime as dt_
@@ -37,12 +36,31 @@ def convert_date_format(date_time, flag):
     )
 
 
+@st.cache_data(ttl=12 * 3600)
+def get_token() -> str:
+    """Get token from vendor panel login"""
+
+    token_url = "https://api-vendor.qlub.cloud/v1/auth/login"
+    header = {"Accept": "application/json"}
+    data = {
+        "email": st.secrets["email"],
+        "password": st.secrets["password"],
+        "type": "admin",
+    }
+
+    try:
+        response = requests.post(token_url, headers=header, json=data)
+        return f'Bearer {response.json()["data"]["cognitoUser"]["signInUserSession"]["idToken"]["jwtToken"]}'
+    except Exception as e:
+        raise Exception(e) from e
+
+
 def get_csv_from_api(start_date_time, end_date_time):
     """Make API request to fetch CSV data and return it as pandas DataFrame."""
     api_endpoint = f"https://api-vendor.qlub.cloud/v1/vendor/order/download/3403?fileFormat=csv&startDate={start_date_time}&endDate={end_date_time}"
     header = {
         "Accept": "application/json, text/plain, */*",
-        "Authorization": st.secrets["AUTH_TOKEN"],
+        "Authorization": get_token(),
     }
 
     response = requests.get(api_endpoint, headers=header)
@@ -53,7 +71,7 @@ def get_csv_from_api(start_date_time, end_date_time):
 def process_csv_data(csv_df, start_date_time, end_date_time):
     """Process the CSV data and return the revenues, tips and surcharges."""
     qdf_total = 0
-    refund_total=0
+    refund_total = 0
     refund_bar = 0
     bill_3 = 0
     tips_total = 0
@@ -61,40 +79,40 @@ def process_csv_data(csv_df, start_date_time, end_date_time):
     total_bill = 0
     bill_4 = 0
     table_list = [
-        '100',
-        '150',
-        '200',
-        '250',
-        '300',
-        '350',
-        '400',
-        '450',
-        '500',
-        '550',
-        '600',
-        '650',
-        '700',
-        '750',
-        '800',
-        '900',
-        '1000',
-        '1050',
-        '2000',
-        '2050',
-        '4000',
-        '4050',
-        '5000',
-        '5050',
-        '6000',
-        '6050',
-        '7000',
-        '7050',
-        'B1',
-        'B2',
-        'B3',
-        'POS-1',
-        'POS-2',
-        'POS-3',
+        "100",
+        "150",
+        "200",
+        "250",
+        "300",
+        "350",
+        "400",
+        "450",
+        "500",
+        "550",
+        "600",
+        "650",
+        "700",
+        "750",
+        "800",
+        "900",
+        "1000",
+        "1050",
+        "2000",
+        "2050",
+        "4000",
+        "4050",
+        "5000",
+        "5050",
+        "6000",
+        "6050",
+        "7000",
+        "7050",
+        "B1",
+        "B2",
+        "B3",
+        "POS-1",
+        "POS-2",
+        "POS-3",
     ]
 
     for index, row in csv_df.iterrows():
@@ -117,10 +135,21 @@ def process_csv_data(csv_df, start_date_time, end_date_time):
                 bill_5 += float(row["TipAmount"])  # bar_tips
                 refund_bar += abs(float(row["RefundedAmount"]))
 
-    return qdf_total, total_bill, tips_total,refund_total, bill_3, bill_4, bill_5,refund_bar
+    return (
+        qdf_total,
+        total_bill,
+        tips_total,
+        refund_total,
+        bill_3,
+        bill_4,
+        bill_5,
+        refund_bar,
+    )
 
 
-def display_results(total_bill, tips_total, qdf_total,refund_total, bill_3, bill_4, bill_5,refund_bar):
+def display_results(
+    total_bill, tips_total, qdf_total, refund_total, bill_3, bill_4, bill_5, refund_bar
+):
     """Display the results in a table."""
     st.subheader("Revenue Summary")
     st.write("The revenue for the selected date is as follows:")
@@ -130,9 +159,9 @@ def display_results(total_bill, tips_total, qdf_total,refund_total, bill_3, bill
     bill_3 = "${0:.2f}".format(bill_3)  # bar_bill
     bill_4 = "${0:.2f}".format(bill_4)  # bar_qdf
     bill_5 = "${0:.2f}".format(bill_5)  # bar_tip
-    bill_6 = "${0:.2f}".format(refund_total-refund_bar) # dining refund
+    bill_6 = "${0:.2f}".format(refund_total - refund_bar)  # dining refund
     bill_7 = "${0:.2f}".format(refund_bar)
-    figure_list = [bill_0, bill_1, bill_2,bill_6, bill_3, bill_5, bill_4, bill_7]
+    figure_list = [bill_0, bill_1, bill_2, bill_6, bill_3, bill_5, bill_4, bill_7]
     st.table(
         pd.DataFrame(
             [figure_list],
@@ -144,7 +173,7 @@ def display_results(total_bill, tips_total, qdf_total,refund_total, bill_3, bill
                 "Bar Revenue",
                 "Bar Tips",
                 "Bar Surcharge",
-                "Bar Refunds"
+                "Bar Refunds",
             ],
         )
     )
@@ -158,12 +187,30 @@ def main():
 
     start_date_time = convert_date_format(dt_start, "start")
     end_date_time = convert_date_format(dt_end, "end")
-    with st.spinner('Loading..'):
+    with st.spinner("Loading.."):
         csv_df = get_csv_from_api(start_date_time, end_date_time)
         if csv_df is not None:
-            qdf_total, total_bill, tips_total, refund_total, bill_3, bill_4, bill_5, refund_bar = process_csv_data(csv_df, start_date_time, end_date_time)
+            (
+                qdf_total,
+                total_bill,
+                tips_total,
+                refund_total,
+                bill_3,
+                bill_4,
+                bill_5,
+                refund_bar,
+            ) = process_csv_data(csv_df, start_date_time, end_date_time)
     if csv_df is not None:
-        display_results(total_bill, tips_total, qdf_total, refund_total, bill_3, bill_4, bill_5, refund_bar)
+        display_results(
+            total_bill,
+            tips_total,
+            qdf_total,
+            refund_total,
+            bill_3,
+            bill_4,
+            bill_5,
+            refund_bar,
+        )
     else:
         st.write("Unable to fetch data. Please check the date and try again.")
 
