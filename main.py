@@ -43,8 +43,8 @@ def get_token() -> str:
     token_url = "https://api-vendor.qlub.cloud/v1/auth/login"
     header = {"Accept": "application/json"}
     data = {
-        "email": 'prerith.subramanya@qlub.io',
-        "password": "Prerith@1997",
+        "email": st.secrets["email"],
+        "password": st.secrets["password"],
         "type": "admin",
     }
 
@@ -52,28 +52,20 @@ def get_token() -> str:
         response = requests.post(token_url, headers=header, json=data)
         return f'Bearer {response.json()["data"]["cognitoUser"]["signInUserSession"]["idToken"]["jwtToken"]}'
     except Exception as e:
-        raise e
+        raise Exception(e) from e
 
 
 def get_csv_from_api(start_date_time, end_date_time):
     """Make API request to fetch CSV data and return it as pandas DataFrame."""
-    api_endpoint = (f"https://api-vendor.qlub.cloud/v1/vendor/transaction"
-                    f"/download/3403?fileFormat=csv&startDate={start_date_time}&endDate={end_date_time}")
+    api_endpoint = f"https://api-vendor.qlub.cloud/v1/vendor/order/download/3403?fileFormat=csv&startDate={start_date_time}&endDate={end_date_time}"
     header = {
         "Accept": "application/json, text/plain, */*",
         "Authorization": get_token(),
     }
 
-    try:
-        response = requests.get(api_endpoint, headers=header)
-        data = StringIO(response.text)
-        if response.status_code == 200:
-            print(response.status_code)
-            return pd.read_csv(data, sep=",")
-        else:
-            print(response.status_code)
-    except Exception as e:
-        raise e
+    response = requests.get(api_endpoint, headers=header)
+    data = StringIO(response.text)
+    return pd.read_csv(data, sep=",") if response.status_code == 200 else None
 
 
 def process_csv_data(csv_df, start_date_time, end_date_time):
@@ -135,28 +127,28 @@ def process_csv_data(csv_df, start_date_time, end_date_time):
             qdf_total += float(row["QlubDinerFee"])
             total_bill += float(row["PaidAmount"])
             tips_total += float(row["TipAmount"])
-            # refund_total += abs(float(row["RefundedAmount"]))
-            table_number = re.findall(r"\d+|B\d+", str(row["Table"]))
+            refund_total += abs(float(row["RefundedAmount"]))
+            table_number = re.findall(r"\d+|B\d+", str(row["TableID"]))
             if table_number and table_number[0] in table_list:
                 bill_3 += float(row["PaidAmount"])  # bar_bill
                 bill_4 += float(row["QlubDinerFee"])  # bar_qdf
                 bill_5 += float(row["TipAmount"])  # bar_tips
-                # refund_bar += abs(float(row["RefundedAmount"]))
+                refund_bar += abs(float(row["RefundedAmount"]))
 
     return (
         qdf_total,
         total_bill,
         tips_total,
-        # refund_total,
+        refund_total,
         bill_3,
         bill_4,
         bill_5,
-        # refund_bar,
+        refund_bar,
     )
 
 
 def display_results(
-    total_bill, tips_total, qdf_total, bill_3, bill_4, bill_5
+    total_bill, tips_total, qdf_total, refund_total, bill_3, bill_4, bill_5, refund_bar
 ):
     """Display the results in a table."""
     st.subheader("Revenue Summary")
@@ -167,9 +159,9 @@ def display_results(
     bill_3 = "${0:.2f}".format(bill_3)  # bar_bill
     bill_4 = "${0:.2f}".format(bill_4)  # bar_qdf
     bill_5 = "${0:.2f}".format(bill_5)  # bar_tip
-    # bill_6 = "${0:.2f}".format(refund_total - refund_bar)  # dining refund
-    # bill_7 = "${0:.2f}".format(refund_bar)
-    figure_list = [bill_0, bill_1, bill_2, bill_3, bill_5, bill_4]
+    bill_6 = "${0:.2f}".format(refund_total - refund_bar)  # dining refund
+    bill_7 = "${0:.2f}".format(refund_bar)
+    figure_list = [bill_0, bill_1, bill_2, bill_6, bill_3, bill_5, bill_4, bill_7]
     st.table(
         pd.DataFrame(
             [figure_list],
@@ -177,9 +169,11 @@ def display_results(
                 "Dining Revenue",
                 "Dining Tips",
                 "Dining Surcharge",
+                "Dining Refunds",
                 "Bar Revenue",
                 "Bar Tips",
                 "Bar Surcharge",
+                "Bar Refunds",
             ],
         )
     )
@@ -195,24 +189,27 @@ def main():
     end_date_time = convert_date_format(dt_end, "end")
     with st.spinner("Loading.."):
         csv_df = get_csv_from_api(start_date_time, end_date_time)
-        print(csv_df.columns)
         if csv_df is not None:
             (
                 qdf_total,
                 total_bill,
                 tips_total,
+                refund_total,
                 bill_3,
                 bill_4,
                 bill_5,
+                refund_bar,
             ) = process_csv_data(csv_df, start_date_time, end_date_time)
     if csv_df is not None:
         display_results(
             total_bill,
             tips_total,
             qdf_total,
+            refund_total,
             bill_3,
             bill_4,
             bill_5,
+            refund_bar,
         )
     else:
         st.write("Unable to fetch data. Please check the date and try again.")
