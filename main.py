@@ -17,14 +17,15 @@ def get_start_date():
     """Prompt user to select a date using Streamlit and return selected date with specific time combined."""
     # Select a date range
     start_date = st.date_input("Select a date", dt_.date(2023, 7, 18))
-    selected_time = datetime.strptime("03:00:00", "%H:%M:%S").time()
+    selected_time = datetime.strptime("00:00:00", "%H:%M:%S").time()
 
     return datetime.combine(start_date, selected_time)
 
 
 def get_end_date(dt_start):
     """Get end date which is one day ahead of the start date."""
-    return dt_start + timedelta(days=1)
+    # Modify the time
+    return dt_start.replace(hour=23, minute=59, second=59)
 
 
 def convert_date_format(date_time, flag):
@@ -43,8 +44,8 @@ def get_token() -> str:
     token_url = "https://api-vendor.qlub.cloud/v1/auth/login"
     header = {"Accept": "application/json"}
     data = {
-        "email": st.secrets["email"],
-        "password": st.secrets["password"],
+        "email": "prerith.subramanya@qlub.io",
+        "password": "Prerith@1997",
         "type": "admin",
     }
 
@@ -57,6 +58,7 @@ def get_token() -> str:
 
 def get_csv_from_api(start_date_time, end_date_time):
     """Make API request to fetch CSV data and return it as pandas DataFrame."""
+    print(start_date_time, end_date_time)
     api_endpoint = (f"https://api-vendor.qlub.cloud/v1/vendor/transaction"
                     f"/download/3403?fileFormat=csv&startDate={start_date_time}&endDate={end_date_time}")
     header = {
@@ -195,7 +197,7 @@ def main():
     end_date_time = convert_date_format(dt_end, "end")
     with st.spinner("Loading.."):
         csv_df = get_csv_from_api(start_date_time, end_date_time)
-        print(csv_df.columns)
+        print(csv_df.shape)
         if csv_df is not None:
             (
                 qdf_total,
