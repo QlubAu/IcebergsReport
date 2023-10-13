@@ -44,8 +44,8 @@ def get_token() -> str:
     token_url = "https://api-vendor.qlub.cloud/v1/auth/login"
     header = {"Accept": "application/json"}
     data = {
-        "email": "prerith.subramanya@qlub.io",
-        "password": "Prerith@1997",
+        "email": st.secrets["email"],
+        "password": st.secrets["password"],
         "type": "admin",
     }
 
