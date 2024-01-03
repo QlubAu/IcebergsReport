@@ -1,10 +1,10 @@
 import requests
 import pandas as pd
-import datetime as dt_
 from io import StringIO
-from datetime import datetime, timedelta
+from datetime import datetime
 import streamlit as st
 import re
+from decimal import Decimal, InvalidOperation
 
 
 def initialize_streamlit():
@@ -15,8 +15,11 @@ def initialize_streamlit():
 
 def get_start_date():
     """Prompt user to select a date using Streamlit and return selected date with specific time combined."""
-    # Select a date range
-    start_date = st.date_input("Select a date", dt_.date(2023, 7, 18))
+    # Use current date as default
+    current_date = datetime.now().date()
+
+    # Select a date
+    start_date = st.date_input("Select a date", current_date)
     selected_time = datetime.strptime("00:00:00", "%H:%M:%S").time()
 
     return datetime.combine(start_date, selected_time)
@@ -80,14 +83,12 @@ def get_csv_from_api(start_date_time, end_date_time):
 
 def process_csv_data(csv_df, start_date_time, end_date_time):
     """Process the CSV data and return the revenues, tips and surcharges."""
-    qdf_total = 0
-    refund_total = 0
-    refund_bar = 0
-    bill_3 = 0
-    tips_total = 0
-    bill_5 = 0
-    total_bill = 0
-    bill_4 = 0
+    qdf_total = Decimal('0')
+    total_bill = Decimal('0')
+    tips_total = Decimal('0')
+    bill_3 = Decimal('0')  # bar_bill
+    bill_4 = Decimal('0')  # bar_qdf
+    bill_5 = Decimal('0')  # bar_tips
     table_list = [
         "100",
         "150",
@@ -134,33 +135,37 @@ def process_csv_data(csv_df, start_date_time, end_date_time):
         end_date = datetime.strptime(end_date_time, "%Y-%m-%dT%H:%M:%S.999Z")
 
         if start_date <= row_date < end_date:
-            qdf_total += float(row["QlubDinerFee"])
-            total_bill += float(row["PaidAmount"])
-            tips_total += float(row["TipAmount"])
-            # refund_total += abs(float(row["RefundedAmount"]))
-            table_number = re.findall(r"\d+|B\d+", str(row["Table"]))
-            if table_number and table_number[0] in table_list:
-                bill_3 += float(row["PaidAmount"])  # bar_bill
-                bill_4 += float(row["QlubDinerFee"])  # bar_qdf
-                bill_5 += float(row["TipAmount"])  # bar_tips
-                # refund_bar += abs(float(row["RefundedAmount"]))
+            # print(f"Iteration {index}, total_bill: {total_bill}, qdf_total: {qdf_total}, tips_total: {tips_total}")
+            for field in ["QlubDinerFee", "PaidAmount", "TipAmount"]:
+                if pd.isna(row[field]):
+                    value = Decimal('0')
+                else:
+                    try:
+                        value = Decimal(str(row[field]))
+                    except (InvalidOperation, ValueError):
+                        value = Decimal('0')
+                    if field == "QlubDinerFee":
+                        qdf_total += value
+                    elif field == "PaidAmount":
+                        total_bill += value
+                    elif field == "TipAmount":
+                        tips_total += value
 
-    return (
-        qdf_total,
-        total_bill,
-        tips_total,
-        # refund_total,
-        bill_3,
-        bill_4,
-        bill_5,
-        # refund_bar,
-    )
+                table_number = re.findall(r"\d+|B\d+", str(row["Table"]))
+                if table_number and table_number[0] in table_list:
+                    print(table_number[0])
+                    print(value if field == "PaidAmount" else Decimal('0'))
+                    bill_3 += value if field == "PaidAmount" else Decimal('0')
+                    bill_4 += value if field == "QlubDinerFee" else Decimal('0')
+                    bill_5 += value if field == "TipAmount" else Decimal('0')
+    return qdf_total, total_bill, tips_total, bill_3, bill_4, bill_5
 
 
 def display_results(
         total_bill, tips_total, qdf_total, bill_3, bill_4, bill_5
 ):
     """Display the results in a table."""
+    print(total_bill, bill_3)
     st.subheader("Revenue Summary")
     st.write("The revenue for the selected date is as follows:")
     bill_0 = "${0:.2f}".format(total_bill - bill_3)  # dining_bill
